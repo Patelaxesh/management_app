@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../providers/auth_provider.dart';
 import '../providers/cart_provider.dart';
+import '../services/checkout_service.dart';
 import 'product_list_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
@@ -20,7 +22,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final _cityController = TextEditingController();
   final _pincodeController = TextEditingController();
 
+  final CheckoutService _checkoutService = CheckoutService();
+
   static const Color primaryGreen = Color(0xFF2E7D32);
+
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -38,39 +44,95 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
-    await context.read<CartProvider>().clearCart();
+    final authProvider = context.read<AuthProvider>();
+    final cartProvider = context.read<CartProvider>();
 
-    if (!mounted) return;
+    final userId = authProvider.currentUserId;
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Order Successful'),
-          content: const Text('Your order has been placed successfully.'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                // Close success dialog
-                Navigator.pop(dialogContext);
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('User session not found. Please login again.'),
+        ),
+      );
+      return;
+    }
 
-                // Go directly to Product List
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (_) => const ProductListScreen()),
-                  (route) => false,
-                );
-              },
-              child: const Text(
-                'Continue Shopping',
-                style: TextStyle(color: primaryGreen),
-              ),
+    if (cartProvider.cartItems.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Your cart is empty.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Process checkout for logged-in user
+      await _checkoutService.checkout(
+        userId: userId,
+        cartItems: cartProvider.cartItems,
+      );
+
+      // Clear cart only after successful checkout
+      await cartProvider.clearCart();
+
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('Order Successful'),
+            content: const Text(
+              'Your order has been placed successfully.',
             ),
-          ],
-        );
-      },
-    );
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ProductListScreen(),
+                    ),
+                        (route) => false,
+                  );
+                },
+                child: const Text(
+                  'Continue Shopping',
+                  style: TextStyle(color: primaryGreen),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst('Exception: ', ''),
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -90,7 +152,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           key: _formKey,
           child: Column(
             children: [
-              // Name
               TextFormField(
                 controller: _nameController,
                 textInputAction: TextInputAction.next,
@@ -98,9 +159,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   labelText: 'Name',
                   prefixIcon: Icon(Icons.person_outline),
                   border: OutlineInputBorder(),
-                  focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: primaryGreen, width: 2),
-                  ),
                 ),
                 validator: (value) {
                   final name = value?.trim() ?? '';
@@ -119,7 +177,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
               const SizedBox(height: 16),
 
-              // Mobile
               TextFormField(
                 controller: _mobileController,
                 keyboardType: TextInputType.phone,
@@ -130,9 +187,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   prefixIcon: Icon(Icons.phone_outlined),
                   counterText: '',
                   border: OutlineInputBorder(),
-                  focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: primaryGreen, width: 2),
-                  ),
                 ),
                 validator: (value) {
                   final mobile = value?.trim() ?? '';
@@ -151,7 +205,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
               const SizedBox(height: 16),
 
-              // Address
               TextFormField(
                 controller: _addressController,
                 textInputAction: TextInputAction.next,
@@ -160,9 +213,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   labelText: 'Address',
                   prefixIcon: Icon(Icons.location_on_outlined),
                   border: OutlineInputBorder(),
-                  focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: primaryGreen, width: 2),
-                  ),
                 ),
                 validator: (value) {
                   final address = value?.trim() ?? '';
@@ -181,7 +231,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
               const SizedBox(height: 16),
 
-              // City
               TextFormField(
                 controller: _cityController,
                 textInputAction: TextInputAction.next,
@@ -189,9 +238,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   labelText: 'City',
                   prefixIcon: Icon(Icons.location_city_outlined),
                   border: OutlineInputBorder(),
-                  focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: primaryGreen, width: 2),
-                  ),
                 ),
                 validator: (value) {
                   final city = value?.trim() ?? '';
@@ -210,7 +256,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
               const SizedBox(height: 16),
 
-              // Pincode
               TextFormField(
                 controller: _pincodeController,
                 keyboardType: TextInputType.number,
@@ -221,9 +266,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   prefixIcon: Icon(Icons.pin_drop_outlined),
                   counterText: '',
                   border: OutlineInputBorder(),
-                  focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: primaryGreen, width: 2),
-                  ),
                 ),
                 validator: (value) {
                   final pincode = value?.trim() ?? '';
@@ -242,19 +284,30 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
               const SizedBox(height: 24),
 
-              // Place Order
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  onPressed: _placeOrder,
+                  onPressed: _isLoading ? null : _placeOrder,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: primaryGreen,
                     foregroundColor: Colors.white,
                   ),
-                  child: const Text(
+                  child: _isLoading
+                      ? const SizedBox(
+                    height: 22,
+                    width: 22,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                      : const Text(
                     'Place Order',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),

@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../providers/auth_provider.dart';
 import '../providers/cart_provider.dart';
 import '../providers/product_provider.dart';
+import '../providers/wishlist_provider.dart';
 import '../widgets/loading_widget.dart';
 import '../widgets/product_card.dart';
 import 'cart_screen.dart';
+import 'login_screen.dart';
 import 'product_detail_screen.dart';
+import 'wishlist_screen.dart';
 
 class ProductListScreen extends StatefulWidget {
   const ProductListScreen({super.key});
@@ -21,8 +25,23 @@ class _ProductListScreenState extends State<ProductListScreen> {
   @override
   void initState() {
     super.initState();
-
     Future.microtask(() => context.read<ProductProvider>().fetchProducts());
+  }
+
+  Future<void> _logout() async {
+    // Clear user data from providers
+    await context.read<AuthProvider>().logout();
+    await context.read<CartProvider>().clearUser();
+    await context.read<WishlistProvider>().clearUser();
+
+    if (!mounted) return;
+
+    // Go back to Login screen and clear navigation stack
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+    );
   }
 
   @override
@@ -39,6 +58,19 @@ class _ProductListScreenState extends State<ProductListScreen> {
         backgroundColor: primaryGreen,
         foregroundColor: Colors.white,
         actions: [
+          // Wishlist
+          IconButton(
+            tooltip: 'Wishlist',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const WishlistScreen()),
+              );
+            },
+            icon: const Icon(Icons.favorite_border),
+          ),
+
+          // Cart
           IconButton(
             tooltip: 'Cart',
             onPressed: () {
@@ -60,12 +92,18 @@ class _ProductListScreenState extends State<ProductListScreen> {
               child: const Icon(Icons.shopping_cart_outlined),
             ),
           ),
+
+          // Logout
+          IconButton(
+            tooltip: 'Logout',
+            onPressed: _logout,
+            icon: const Icon(Icons.logout),
+          ),
         ],
       ),
-
       body: Column(
         children: [
-          // Search
+          // Search bar
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
             child: TextField(
@@ -82,7 +120,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
             ),
           ),
 
-          // Product Body
+          // Product list
           Expanded(child: _buildBody(productProvider)),
         ],
       ),
@@ -90,12 +128,10 @@ class _ProductListScreenState extends State<ProductListScreen> {
   }
 
   Widget _buildBody(ProductProvider provider) {
-    // Loading
     if (provider.isLoading) {
       return const LoadingWidget();
     }
 
-    // Error
     if (provider.errorMessage != null) {
       return Center(
         child: Padding(
@@ -103,18 +139,10 @@ class _ProductListScreenState extends State<ProductListScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(
-                Icons.cloud_off_outlined,
-                size: 48,
-                color: Colors.grey,
-              ),
-
+              const Icon(Icons.cloud_off_outlined, size: 48, color: Colors.grey),
               const SizedBox(height: 12),
-
               Text(provider.errorMessage!, textAlign: TextAlign.center),
-
               const SizedBox(height: 16),
-
               ElevatedButton(
                 onPressed: provider.fetchProducts,
                 style: ElevatedButton.styleFrom(
@@ -129,7 +157,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
       );
     }
 
-    // Empty / No Search Result
     if (provider.filteredProducts.isEmpty) {
       return const Center(
         child: Text(
@@ -139,7 +166,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
       );
     }
 
-    // Product List
     return RefreshIndicator(
       color: primaryGreen,
       onRefresh: provider.fetchProducts,
@@ -148,7 +174,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
         itemCount: provider.filteredProducts.length,
         itemBuilder: (context, index) {
           final product = provider.filteredProducts[index];
-
           return ProductCard(
             product: product,
             onTap: () {
